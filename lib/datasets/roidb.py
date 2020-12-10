@@ -36,6 +36,8 @@ class Roidb(object):
         for img_id in all_info:
             info = all_info[img_id]
             file, idx, num = info['file'], info['idx'], info['objectsNum']
+            # if int(file) == 9:
+            #     continue
             bbox = h5_files[file]['bboxes'][idx]
             if 'cls' in h5_files[file]:
                 cls = h5_files[file]['cls'][idx]

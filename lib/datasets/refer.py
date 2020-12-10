@@ -38,9 +38,22 @@ class Refer(object):
         return img_ids
 
     def load_sent(self, sent_id):
+        r"""
+        {"num_nodes": 4, "referent_id": "605147", "image_id": "2370283", 
+        "bbox": [364, 54, 42, 117], "expression": "There is a man that is wearing cap , 
+        to the right of a wristband and to the right of the wood brown bat ."}, 
+        """
         return self.data['refs'][sent_id]
 
     def add_token(self):
         for sent_id in self.data['refs']:
+            # split every single token
             self.data['refs'][sent_id]['token'] = self.data['refs'][sent_id]['expression'].split(' ')
             self.data['refs'][sent_id]['sent'] = self.data['refs'][sent_id]['expression']
+    
+    def remove_redundant_sent(self, sent_ids, img_ids):
+        ret = []
+        for sent_id in sent_ids:
+            if self.data['refs'][sent_id]['image_id'] in img_ids:
+                ret.append(sent_id)
+        return ret

@@ -15,23 +15,30 @@ class Refvg(object):
         self._dataset = 'refvg'
         self._imageset = 'vg'
         self._split = split
+        # load the *_expression.json
         self._ref_db = Refer(opt['data_root'], self._dataset, split)
+        # load the *_sgs.json and *_sg_seqs.json
         if model_method == 'sgmn':
             self._ref_sg = self._load_sg()
             self._ref_sg_seq = self._load_sg_seq()
         else:
             self._ref_sg = None
             self._ref_sg_seq = None
+        # Get the ids of all the referent expressions
         self._sent_ids = self._ref_db.get_sentIds()
-        self._image_ids = self._ref_db.get_imgIds(self._sent_ids)
         roidb = Roidb(self._imageset, model_method)
+        self.sent_ids = self.ref_db.remove_redundant_sent(self._sent_ids, roidb.image_ids)
+        # Get the corresponding image id and remove duplicate
+        self._image_ids = self._ref_db.get_imgIds(self._sent_ids)
         self._rois_db = {}
         self.max_num_box = 0
         for img_id in self._image_ids:
             assert roidb.roidb.has_key(img_id)
+            # roidb.roidb is the content of gt_objects_info.json
             self._rois_db[img_id] = roidb.roidb[img_id].copy()
+            # the largest number of objects in a image
             self.max_num_box = max(self.max_num_box, int(self._rois_db[img_id]['num_objs']))
-        self._h5_files = roidb.h5_files
+        self._h5_files = roidb.h5_files # the file descriptor of gt_object_%d.h5
         self._h5_lrel_files = roidb.h5_lrel_files
 
     @property

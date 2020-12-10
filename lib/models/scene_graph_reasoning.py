@@ -4,6 +4,9 @@ import numpy as np
 
 from models.language import RNNEncoder, ModuleInputAttention
 from models.modules import AttendRelationModule, AttendLocationModule, AttendNodeModule
+# AttendRelationModule: cxt_feats, cxt_lfeats先normalize然后concatnate再和lang_feats做matching，计算相似度
+# AttendLocationModule: lfeats先normalize然后和lang_feats做matching
+# AttendNodeModule: vis_feats先normalize然后和lang_feats做matching
 from models.modules import MergeModule, TransferModule, NormAttnMap
 
 

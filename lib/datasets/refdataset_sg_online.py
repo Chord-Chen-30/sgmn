@@ -5,6 +5,12 @@ from scipy.spatial.distance import squareform, pdist
 
 class RefDatasetSG(data.Dataset):
     def __init__(self, refdb, vocab, opt):
+        r"""
+            self.refdb: Refvg class, contain *_expression.json, *_sgs.json and *_sg_seqs.json
+            self.ids: unique imageIds corresponding to sentIds in *_expression.json
+            self.sent_id: all the expression ids
+            self.sent_ind_to_ids: turn sent_id from a list into a dict, so we can index by int
+        """
         self.refdb = refdb
         self.vocab = vocab
         self.opt = opt
@@ -16,6 +22,14 @@ class RefDatasetSG(data.Dataset):
         self._compute_reftoken()
 
     def __getitem__(self, index):
+        r"""
+            gt_box: the true bbox of the referent expression
+            sent_to_box_idx: the max overlapping box index in image
+            word_idx: the word index in vocabulary
+            feature: the visual feature in gt_object
+            lfeat: location feature of objects
+            cxt_idx: the top closest num_cxt boxes
+        """
         sent_id = self.sent_ind_to_ids[index]
         sent = self.refdb.ref_db.load_sent(sent_id)
         img_id = self.refdb.ref_db.get_imgIds([sent_id])[0]
@@ -103,6 +117,7 @@ class RefDatasetSG(data.Dataset):
         for i, sent_id in enumerate(self.sent_ids):
             img_id = self.refdb.ref_db.get_imgIds([sent_id])[0]
             boxes = self.refdb.rois_db[img_id]['box']
+            # ref is the value of *_expression.json
             ref = self.refdb.ref_db.load_sent(sent_id)
             bbox = ref['bbox']
             x0 = bbox[0]
@@ -110,6 +125,7 @@ class RefDatasetSG(data.Dataset):
             y0 = bbox[1]
             y1 = bbox[3] + y0 - 1
             iou, ind, ious = max_overlap([x0, y0, x1, y1], boxes)
+            # Save the index of max overlapping bbox
             ref['bbox_ind'] = ind
             ref['gt_box'] = np.array([x0, y0, x1, y1], dtype=np.float32)
             sent_ind_to_id[i] = sent_id
@@ -180,6 +196,7 @@ class RefDatasetSG(data.Dataset):
             for j in seqset_list[i]:
                 seq_subtrees[i, j] = 1
         com_mask = np.zeros((max_length,), dtype=np.float32)
+        # com_seq is entity we look for
         com_seq = sg_seq['com_seq']
         com_seq.sort(reverse=True)
         for com_seq_ind in com_seq:
@@ -197,6 +214,9 @@ class RefDatasetSG(data.Dataset):
 
 
 def compute_IoU(b1, b2):
+    r"""
+        Return the overlap proportion of two bounding boxes
+    """
     iw = min(b1[2], b2[2]) - max(b1[0], b2[0]) + 1
     if iw <= 0:
         return 0

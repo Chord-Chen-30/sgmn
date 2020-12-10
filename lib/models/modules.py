@@ -9,10 +9,10 @@ from model_utils import NormalizeScale
 class AttendRelationModule(nn.Module):
     def __init__(self, dim_vis_feat, visual_init_norm, jemb_dim, dim_lang_feat, jemb_dropout):
         super(AttendRelationModule, self).__init__()
-        self.vis_feat_normalizer = NormalizeScale(dim_vis_feat, visual_init_norm)
-        self.lfeat_normalizer = NormalizeScale(5, visual_init_norm)
+        self.vis_feat_normalizer = NormalizeScale(dim_vis_feat, visual_init_norm) # 初始化一个值全为visual_init_norm的1*dim_vis_feat的权重
+        self.lfeat_normalizer = NormalizeScale(5, visual_init_norm) # 初始化一个值全为visual_init_norm的1*5的权重
         self.fc = nn.Linear(dim_vis_feat + 5, jemb_dim)
-        self.matching = RelationMatching(jemb_dim, dim_lang_feat, jemb_dim, jemb_dropout, -1)
+        self.matching = RelationMatching(jemb_dim, dim_lang_feat, jemb_dim, jemb_dropout, -1) # 把vis_input和lang_input经过两个一样的网络，通过mask给相应位置设置min value，返回余弦相似度
 
     def forward(self, cxt_feats, cxt_lfeats, lang_feats):
         # cxt_feats: (bs, n, num_cxt, dim_vis_feat); cxt_lfeats: (bs, n, num_cxt, 5); lang_feats: (bs, num_seq, dim_lang)
@@ -29,7 +29,7 @@ class AttendRelationModule(nn.Module):
         rel_feats = self.fc(concat)
         rel_feats = rel_feats.view(batch, n, num_cxt, -1)  # bs, n, 10, jemb_dim
 
-        attn = self.matching(rel_feats, lang_feats, masks)
+        attn = self.matching(rel_feats, lang_feats, masks) # 把vis_input和lang_input经过两个一样的网络，通过mask给相应位置设置min value，返回余弦相似度
 
         return attn
 
@@ -52,6 +52,8 @@ class RelationMatching(nn.Module):
         self.min_value = min_value
 
     def forward(self, vis_input, lang_input, masks):
+        # 把vis_input和lang_input经过两个一样的网络，通过mask给相应位置设置min value，返回余弦相似度
+
         # vis_input: (bs, n, num_cxt, vim_dim); lang_input: (bs, num_seq, lang_dim);  mask(bs, n, num_cxt)
         bs, n, num_cxt = vis_input.size(0), vis_input.size(1), vis_input.size(2)
         num_seq = lang_input.size(1)
@@ -202,20 +204,23 @@ class TransferModule(nn.Module):
         obj_num_rel_expand = obj_num_rel.unsqueeze(1).expand(bs, n)
         obj_son_map[obj_num_rel_expand == 0] = 0
 
-        #total son
+        #total son, sum up the related object and subject attention map
         son_map = sub_son_map + obj_son_map
         num_rel_expand = sub_num_rel_expand + obj_num_rel_expand
         if self.need_norm:
             son_map, norm = self.norm_fun(son_map)
+        # sum up the relevant attention map and the unrelevant objects remain the same
         son_map = son_map * (num_rel_expand != 0).float() + attn_obj * (num_rel_expand == 0).float()
 
         offset_idx = torch.tensor(np.array(range(bs)) * n, requires_grad=False).cuda()
         offset_idx = offset_idx.unsqueeze(1).unsqueeze(2).expand(bs, n, num_cxt)
+        # why -1? the element should be index
         select_idx = (relation_ind != -1).long() * relation_ind + offset_idx
         select_attn = torch.index_select(son_map.view(bs * n, 1), 0, select_idx.view(-1))
         select_attn = select_attn.view(bs, n, num_cxt)
         select_attn = (relation_ind != -1).float() * select_attn
 
+        # choose the closest object
         attn_map_sum = torch.sum(attn_relation * select_attn, dim=2)
 
         if self.need_norm:

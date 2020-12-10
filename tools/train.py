@@ -20,6 +20,8 @@ from models.scene_graph_reasoning import SGReason
 from models.model_utils import clip_gradient
 from crits.criterion import SoftmaxLoss
 
+import pickle
+
 best_prec = 0
 args = parse_opt()
 opt = vars(args)
@@ -56,6 +58,12 @@ def main():
     vocab = train_refdb.load_dictionary()
     opt['vocab_size'] = len(vocab)
     val_refdb = get_db('refvg_val_'+opt['model_method'])
+
+    # pickle.load(train_refdb, open('./train_refdb.pkl', 'wb'))
+    # pickle.load(vocab, open('./vocab.pkl', 'wb'))
+    # pickle.load(val_refdb, open('./train_refdb.pkl', 'wb'))
+    # opt['vocab_size'] = len(vocab)
+
 
     # model, criterion, optimizer
     model = SGReason(opt)
