@@ -72,6 +72,9 @@ def parse_opt():
     parser.add_argument('--dim_edge_gate', default=512, type=int)
     parser.add_argument('--edge_gate_drop_out', default=0.1, type=float)
 
+    # a default parameter for parallel comupting  --chen
+    parser.add_argument('--local_rank', default=0, type=int)  
+    
     # parse
     args = parser.parse_args()
     return args

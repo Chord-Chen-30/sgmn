@@ -26,10 +26,10 @@ class Refvg(object):
             self._ref_sg_seq = None
         # Get the ids of all the referent expressions
         self._sent_ids = self._ref_db.get_sentIds()
-        roidb = Roidb(self._imageset, model_method)
-        self.sent_ids = self.ref_db.remove_redundant_sent(self._sent_ids, roidb.image_ids)
-        # Get the corresponding image id and remove duplicate
         self._image_ids = self._ref_db.get_imgIds(self._sent_ids)
+        roidb = Roidb(self._imageset, model_method)
+        # Get the corresponding image id and remove duplicate
+        # self.sent_ids = self.ref_db.remove_redundant_sent(self._sent_ids, roidb.image_ids)
         self._rois_db = {}
         self.max_num_box = 0
         for img_id in self._image_ids:

@@ -11,7 +11,7 @@ class RNNEncoder(nn.Module):
         super(RNNEncoder, self).__init__()
         self.variable_lengths = variable_lengths
         if pretrain is True:
-            embedding_mat = np.load('./data/word_embedding/embed_matrix.npy')
+            embedding_mat = np.load('../data/word_embedding/embed_matrix.npy')
             self.embedding = nn.Embedding.from_pretrained(to_torch(embedding_mat).cuda(), freeze=False)
         else:
             self.embedding = nn.Embedding(vocab_size, word_embedding_size)
