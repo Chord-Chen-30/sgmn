@@ -5,6 +5,9 @@ from opt import parse_opt
 import json
 import io
 
+import utils.timer as timer
+import time
+
 opt = parse_opt()
 opt = vars(opt)
 
@@ -17,17 +20,22 @@ class Refvg(object):
         self._split = split
         # load the *_expression.json
         self._ref_db = Refer(opt['data_root'], self._dataset, split)
+        # print("load expressions over time:", time.clock()-timer.get_value("clock"))
         # load the *_sgs.json and *_sg_seqs.json
         if model_method == 'sgmn':
             self._ref_sg = self._load_sg()
             self._ref_sg_seq = self._load_sg_seq()
+            # print("load sg\sg_seq over time:", time.clock()-timer.get_value("clock"))
         else:
             self._ref_sg = None
             self._ref_sg_seq = None
         # Get the ids of all the referent expressions
         self._sent_ids = self._ref_db.get_sentIds()
+        # Get all the expressions' corresponding img id
         self._image_ids = self._ref_db.get_imgIds(self._sent_ids)
+        # print("get img_id:", time.clock()-timer.get_value("clock"))
         roidb = Roidb(self._imageset, model_method)
+        # print("load roi over time:", time.clock()-timer.get_value("clock"))
         # Get the corresponding image id and remove duplicate
         # self.sent_ids = self.ref_db.remove_redundant_sent(self._sent_ids, roidb.image_ids)
         self._rois_db = {}

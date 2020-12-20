@@ -36,3 +36,29 @@ class Logger(object):
         self.console.close()
         if self.file is not None:
             self.file.close()
+
+
+from datetime import datetime, timedelta
+import random
+import pickle
+import numpy as np
+from numpy import mean, std
+
+
+class UnderwaterLogger():
+
+    def __init__(self, save_path):
+        self.save_path = save_path
+        self.hyper_params = {}
+
+        time = datetime.now() + timedelta(hours=8)  # Convert UTC to Beijing
+        self.time = time.strftime('%Y-%m-%d_%H.%M.%S') + str(round(random.random(), 3))[1:]
+
+        self.save_path += (self.time + '.pkl')
+
+    def hyper_param_info(self, hyper_param, value):
+        self.hyper_params[hyper_param] = value
+
+    def save(self):
+        pickle.dump(self, open(self.save_path, 'wb'))
+

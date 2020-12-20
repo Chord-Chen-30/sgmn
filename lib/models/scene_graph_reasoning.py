@@ -10,6 +10,8 @@ from models.modules import AttendRelationModule, AttendLocationModule, AttendNod
 # AttendNodeModule: vis_feats先normalize然后和lang_feats做matching
 from models.modules import MergeModule, TransferModule, NormAttnMap
 
+from models.language import BERTEncoder
+
 
 class SGReason(nn.Module):
 
@@ -27,7 +29,11 @@ class SGReason(nn.Module):
                                       rnn_type=opt['rnn_type'],
                                       variable_lengths=opt['variable_lengths'] > 0,
                                       pretrain=True)
-        dim_word_emb = opt['word_embedding_size']
+
+        # self.BERT_seq_encoder = BERTEncoder( )
+
+
+        dim_word_emb = opt['word_embedding_size']# 768 here!!!--cz
         dim_word_cxt = opt['rnn_hidden_size'] * (2 if opt['bidirectional'] else 1)
         # judge module weight for seq (node, relation, location)
         self.weight_module_spo = nn.Sequential(nn.Linear(dim_word_cxt, 3),
@@ -57,7 +63,7 @@ class SGReason(nn.Module):
 
     def forward(self, feature, cls, lfeat,
                       seq, seq_weight, seq_type, seq_rel, com_mask,
-                      cxt_idx, cxt_idx_mask, cxt_lfeats):
+                      cxt_idx, cxt_idx_mask, cxt_lfeats, sent_ids):
         ''' language seq: seq(bs, num_seq, len_sent); seq_type(bs, num_seq){-1: None, 0: SPO, 1: S, 2:ALL};
                           seq_rel(bs, num_seq, num_seq){-1:None, 0:SS, 1:SO, 2:OS, 3:OO}
         '''
@@ -72,6 +78,23 @@ class SGReason(nn.Module):
         cxt_feats = cxt_feats.view(bs, n, num_cxt, -1) * cxt_idx_mask.unsqueeze(3).float()
 
         context, hidden, embeded, max_length = self.seq_encoder(seq.view(bs*num_seq, -1))
+
+        # print("sent_ids shape: ", sent_ids.shape)
+        # print("sent_ids content: ", sent_ids[0])
+        # context, hidden, embeded, max_length = self.BERT_seq_encoder(sent_ids)
+
+        # bs=64
+        # num_seq=50
+        # print("bs:", bs)
+        # print("num_seq:", num_seq)
+
+        # print(context.shape) # 3200 x 12 x 1024
+        # print(hidden.shape) # 3200 x 1024
+        # print(embeded.shape) # 3200 x 12 x 300
+        # print("max length:", max_length) # 12
+        # print(seq.shape) # 64 x 50 x 50
+        # exit(0)
+
         seq = seq[:, :, 0:max_length]
         seq_weight = seq_weight[:, :, 0:max_length]
         context = context.view(bs, num_seq, max_length, -1)

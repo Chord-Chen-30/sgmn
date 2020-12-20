@@ -28,6 +28,7 @@ class RefDatasetSG(data.Dataset):
             word_idx: the word index in vocabulary
             feature: the visual feature in gt_object
             lfeat: location feature of objects
+            seq: 
             cxt_idx: the top closest num_cxt boxes
         """
         sent_id = self.sent_ind_to_ids[index]
