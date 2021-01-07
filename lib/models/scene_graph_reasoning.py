@@ -147,10 +147,10 @@ class SGReason(nn.Module):
             if random.random() < 0.2:
                 attn_sum = (weights_spo_expand[:, :, :, 0] * attn_node + 
                         weights_spo_expand[:, :, :, 1] * attn_location).detach()
-            salient_indices = torch.argmax(torch.max(attn_sum, dim=2)[0], dim=1)
-            for i in range(len(salient_indices)):
-                attn_node[i, salient_indices[i]] = -0.
-                attn_location[i, salient_indices[i]] = -0.
+                salient_indices = torch.argmax(torch.max(attn_sum, dim=2)[0], dim=1)
+                for i in range(len(salient_indices)):
+                    attn_node[i, salient_indices[i]] = -0.
+                    attn_location[i, salient_indices[i]] = -0.
 
         global_sub_attn_map = torch.zeros((bs, num_seq, n), requires_grad=False).float().cuda()
         global_obj_attn_map = torch.zeros((bs, num_seq, n), requires_grad=False).float().cuda()
