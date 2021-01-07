@@ -5,13 +5,9 @@ import numpy as np
 
 from models.language import RNNEncoder, ModuleInputAttention
 from models.modules import AttendRelationModule, AttendLocationModule, AttendNodeModule
-# AttendRelationModule: cxt_feats, cxt_lfeats先normalize然后concatnate再和lang_feats做matching，计算相似度
-# AttendLocationModule: lfeats先normalize然后和lang_feats做matching
-# AttendNodeModule: vis_feats先normalize然后和lang_feats做matching
-from models.modules import MergeModule, TransferModule, NormAttnMap
-
-from models.language import BERTEncoder
-
+from models.modules import MergeModule, TransferModule, NormAttnMap, SimplestAggregator, GateAttnMap
+from models.gnn_module import GraphSage, GAT
+import random
 
 class SGReason(nn.Module):
 
@@ -29,11 +25,7 @@ class SGReason(nn.Module):
                                       rnn_type=opt['rnn_type'],
                                       variable_lengths=opt['variable_lengths'] > 0,
                                       pretrain=True)
-
-        # self.BERT_seq_encoder = BERTEncoder( )
-
-
-        dim_word_emb = opt['word_embedding_size']# 768 here!!!--cz
+        dim_word_emb = opt['word_embedding_size']
         dim_word_cxt = opt['rnn_hidden_size'] * (2 if opt['bidirectional'] else 1)
         # judge module weight for seq (node, relation, location)
         self.weight_module_spo = nn.Sequential(nn.Linear(dim_word_cxt, 3),
@@ -61,9 +53,18 @@ class SGReason(nn.Module):
 
         self.need_location = False  # expressions in Ref-Reasoning do not describe the absolute location
 
+        self.aggregator = SimplestAggregator()
+        self.graphsage = GraphSage(input_dim=2048, hidden_dim=2048) #this because the feature dimension of one bounding box is 2048.
+        
+        self.gate_fun_node = GateAttnMap(16)
+        self.gate_fun_loc = GateAttnMap(16)
+        self.gate_fun_obj = GateAttnMap(16)
+        
+        self.GAT = GAT(nfeat=2048, nhid=2048)
+
     def forward(self, feature, cls, lfeat,
                       seq, seq_weight, seq_type, seq_rel, com_mask,
-                      cxt_idx, cxt_idx_mask, cxt_lfeats, sent_ids):
+                      cxt_idx, cxt_idx_mask, cxt_lfeats):
         ''' language seq: seq(bs, num_seq, len_sent); seq_type(bs, num_seq){-1: None, 0: SPO, 1: S, 2:ALL};
                           seq_rel(bs, num_seq, num_seq){-1:None, 0:SS, 1:SO, 2:OS, 3:OO}
         '''
@@ -77,24 +78,45 @@ class SGReason(nn.Module):
         cxt_feats = torch.index_select(feature.view(bs*n, -1), 0, (offset_idx+cxt_idx).view(-1))
         cxt_feats = cxt_feats.view(bs, n, num_cxt, -1) * cxt_idx_mask.unsqueeze(3).float()
 
+        # feature里的每一行是一个bounding box的feature，对于每个feature我都有一个5*2048的矩阵来存放他的所有neighbor的feature，可以以此聚合。
+        # 然后在这个聚合后的feature矩阵里重新查找每个node的neighbor, 替换掉原有的cxt_feats：
+        # cxt_feats = torch.index_select(aggregated_feature.view(bs*n, -1), 0, (offset_idx+cxt_idx).view(-1))
+        # cxt_feats = cxt_feats.view(bs, n, num_cxt, -1) * cxt_idx_mask.unsqueeze(3).float()  #cxt_idx_mask是把那些不在这个image里的bounding box去掉。
+        # feature = aggregated_feature  #替换掉原有的feature。
+
+        # Below is a simplest aggregator module.
+        # cxt_feats, feature = self.aggregator(feature, cxt_feats, offset_idx, cxt_idx, cxt_idx_mask, bs, n, num_cxt)
+
+        # Below is a Graphsage module, we will use this to transform each bounding box's features.
+        '''
+            不管是哪种GNN模块，我们的输入都只有:
+            --feature: (64, 57, 2048)整个batch里每个image里每个bound box(node)的feature.
+            --cxt_feats: (64, 57, 5, 2048)多出来的一维对应上面每个bound box的5个neighbor的feature.
+        '''
+        '''
+            我可以把输入的feature:(64,57,2048)转成(64*57, 2048)这样一个二维矩阵，表示67*57个node，一个node的特征维度是2048
+            同样，把输入的cxt_feats:(64, 57, 5, 2048)转成(67*57,5,2048)，第一个维度表示节点的数量，第二个维度表示邻居节点的数量，第三个表示输入特征的维度
+            所以要在传入前执行如下操作:
+        '''
+        #----------Below is a Graphsage module, we will use this to transform each bounding box's features.----------
+        # feat_input = feature.view(-1, feature.shape[2])     # the new shape is (64*57, 2048)
+        # cxt_feats_input = cxt_feats.view(-1, cxt_feats.shape[2], cxt_feats.shape[3]) # the new shape is (64*57, 5, 2048)
+        # new_feat = self.graphsage(feat_input, cxt_feats_input) # the output shape is (64*57, 2048), we need to reshape to its origin form: (64, 57, 2048)   ))
+        # feature = new_feat.view(bs, n, -1)
+        # # reselect cxt_feats.
+        # cxt_feats = torch.index_select(feature.view(bs*n, -1), 0, (offset_idx+cxt_idx).view(-1))
+        # cxt_feats = cxt_feats.view(bs, n, num_cxt, -1) * cxt_idx_mask.unsqueeze(3).float()
+        #----------Above is a Graphsage module----------
+        #----------Below is Graph Attention Network module----------
+        feat_input = feature.view(-1, feature.shape[2])     # the new shape is (64*57, 2048)
+        new_feat = self.GAT(feat_input, cxt_idx, offset_idx, cxt_idx_mask, bs, n)  #(64*57, 2048)
+        feature = feature*0.9 + new_feat.view(bs, n, -1)*0.1
+        # reselect cxt_feats.
+        cxt_feats = torch.index_select(feature.view(bs*n, -1), 0, (offset_idx+cxt_idx).view(-1))
+        cxt_feats = cxt_feats.view(bs, n, num_cxt, -1) * cxt_idx_mask.unsqueeze(3).float()
+        #----------Above is Graph Attention Network module----------
+
         context, hidden, embeded, max_length = self.seq_encoder(seq.view(bs*num_seq, -1))
-
-        # print("sent_ids shape: ", sent_ids.shape)
-        # print("sent_ids content: ", sent_ids[0])
-        # context, hidden, embeded, max_length = self.BERT_seq_encoder(sent_ids)
-
-        # bs=64
-        # num_seq=50
-        # print("bs:", bs)
-        # print("num_seq:", num_seq)
-
-        # print(context.shape) # 3200 x 12 x 1024
-        # print(hidden.shape) # 3200 x 1024
-        # print(embeded.shape) # 3200 x 12 x 300
-        # print("max length:", max_length) # 12
-        # print(seq.shape) # 64 x 50 x 50
-        # exit(0)
-
         seq = seq[:, :, 0:max_length]
         seq_weight = seq_weight[:, :, 0:max_length]
         context = context.view(bs, num_seq, max_length, -1)
@@ -121,15 +143,24 @@ class SGReason(nn.Module):
         obj_input_emb, obj_input_attn = self.obj_input_encoder(context, embeded, input_labels)
         attn_obj = self.node_module(feature, obj_input_emb, cls)
 
+        if self.training:
+            if random.random() < 0.2:
+                attn_sum = (weights_spo_expand[:, :, :, 0] * attn_node + 
+                        weights_spo_expand[:, :, :, 1] * attn_location).detach()
+            salient_indices = torch.argmax(torch.max(attn_sum, dim=2)[0], dim=1)
+            for i in range(len(salient_indices)):
+                attn_node[i, salient_indices[i]] = -0.
+                attn_location[i, salient_indices[i]] = -0.
+
         global_sub_attn_map = torch.zeros((bs, num_seq, n), requires_grad=False).float().cuda()
         global_obj_attn_map = torch.zeros((bs, num_seq, n), requires_grad=False).float().cuda()
         for i in range(max_num_seq):
             clone_global_sub_attn_map = global_sub_attn_map.clone()
             clone_global_obj_attn_map = global_obj_attn_map.clone()
             # seq type: S
-            s_attn_node_iter = weights_spo_expand[:, i, :, 0] * attn_node[:, i, :]
+            s_attn_node_iter = weights_spo_expand[:, i, :, 0] * self.gate_fun_node(attn_node[:, i, :])
             if self.need_location:
-                s_attn_location_iter = weights_spo_expand[:, i, :, 1] * attn_location[:, i, :]
+                s_attn_location_iter = weights_spo_expand[:, i, :, 1] * self.gate_fun_loc(attn_location[:, i, :])
                 s_attn_iter_s = s_attn_node_iter + s_attn_location_iter
                 s_attn_iter_o = s_attn_node_iter + s_attn_location_iter
                 s_attn_iter_s, s_attn_iter_s_norm = self.norm_fun(s_attn_iter_s)
@@ -149,7 +180,7 @@ class SGReason(nn.Module):
                                                                        (seq_rel[:, i, :] == 2).float(),
                                                                        clone_global_obj_attn_map,
                                                                        (seq_rel[:, i, :] == 3).float(),
-                                                                       attn_obj = attn_obj[:, i, :])
+                                                                       attn_obj = self.gate_fun_obj(attn_obj[:, i, :]))
 
             spo_attn_relation_iter = weights_spo_expand[:, i, :, 2] * spo_attn_relation
             if self.need_location:

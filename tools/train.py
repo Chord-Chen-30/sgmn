@@ -8,7 +8,7 @@ import time
 import _init_paths
 from opt import parse_opt
 from datasets.factory import get_db
-from utils.logging import Logger, UnderwaterLogger
+from utils.logging import Logger
 from utils.meter import AverageMeter
 from utils.osutils import mkdir_if_missing, save_checkpoint, load_checkpoint
 from utils import to_numpy
@@ -19,10 +19,6 @@ from datasets.refdataset_sg_online import RefDatasetSG as RefDataset
 from models.scene_graph_reasoning import SGReason
 from models.model_utils import clip_gradient
 from crits.criterion import SoftmaxLoss
-
-import utils.timer as timer
-
-import pickle
 
 best_prec = 0
 args = parse_opt()
@@ -39,12 +35,6 @@ def main():
         model_id = time.strftime("%m_%d_%H-%M-%S")
     sys.stdout = Logger(osp.join(opt['log_dir'], 'log.' + model_id + '.txt'))
 
-
-    CS280Logger = UnderwaterLogger(save_path='./log-cs280/')
-    for hyper_param in opt:
-        CS280Logger.hyper_param_info(hyper_param, opt[hyper_param])
-    CS280Logger.save()
-
     # initialize
     checkpoint_dir = osp.join(opt['checkpoint_dir'], model_id)
     mkdir_if_missing(checkpoint_dir)
@@ -60,20 +50,13 @@ def main():
     torch.manual_seed(opt['seed'])
     torch.cuda.manual_seed_all(opt['seed'])
 
-    timer._init()
-    timer.set_value("clock", time.clock())
-    # load imdb, load the _expressions.json, which takes much time
+
+    # load imdb
     train_refdb = get_db('refvg_train_' + opt['model_method'])
     vocab = train_refdb.load_dictionary()
-    # print("load dictionary:", time.clock()-timer.get_value("clock"))
     opt['vocab_size'] = len(vocab)
     val_refdb = get_db('refvg_val_'+opt['model_method'])
-
-    # pickle.load(train_refdb, open('./train_refdb.pkl', 'wb'))
-    # pickle.load(vocab, open('./vocab.pkl', 'wb'))
-    # pickle.load(val_refdb, open('./train_refdb.pkl', 'wb'))
-    # opt['vocab_size'] = len(vocab)
-
+    opt['min_num_box'] = train_refdb.min_num_box
 
     # model, criterion, optimizer
     model = SGReason(opt)
@@ -161,10 +144,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
             cxt_lfeats = cxt_lfeats.cuda()
 
         # compute output
-        # print("In train: ", seq.shape)
         score = model(feature, cls, lfeat,
                       seq, seq_weight, seq_type, seq_rel, com_mask,
-                      cxt_idx, cxt_idx_mask, cxt_lfeats, sent_ids)
+                      cxt_idx, cxt_idx_mask, cxt_lfeats)
         loss, score = criterion(score, cls, sents_gt)
 
         losses.update(loss.item())

@@ -38,7 +38,7 @@ def parse_opt():
     parser.add_argument('--margin', type=float, default=0.1, help='margin for ranking loss')
 
     # optimization
-    parser.add_argument('--max_epochs', type=int, default=1, help='max number of epochs to run')
+    parser.add_argument('--max_epochs', type=int, default=10, help='max number of epochs to run')
     parser.add_argument('--batch_size', type=int, default=64, help='batch size in number of images per batch')
     parser.add_argument('--grad_clip', type=float, default=0.1, help='clip gradients at this value')
     parser.add_argument('--optim_epsilon', type=float, default=1e-8,
@@ -73,8 +73,8 @@ def parse_opt():
     parser.add_argument('--edge_gate_drop_out', default=0.1, type=float)
 
     # a default parameter for parallel comupting  --chen
-    parser.add_argument('--local_rank', default=0, type=int)  
-    
+    parser.add_argument('--local_rank', default=0, type=int)
+
     # parse
     args = parser.parse_args()
     return args

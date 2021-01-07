@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils import to_numpy, to_torch
-import pickle
+
 
 class RNNEncoder(nn.Module):
     def __init__(self, vocab_size, word_embedding_size, hidden_size, bidirectional=False,
@@ -24,102 +24,6 @@ class RNNEncoder(nn.Module):
         self.num_dirs = 2 if bidirectional else 1
 
     def forward(self, input_labels):
-        if self.variable_lengths:
-            input_lengths = (input_labels != 0).sum(1)
-
-            # make ixs
-            input_lengths_list = to_numpy(input_lengths).tolist()
-            sorted_input_lengths_list = np.sort(input_lengths_list)[::-1].tolist()
-            max_length = sorted_input_lengths_list[0]
-            sort_ixs = np.argsort(input_lengths_list)[::-1].tolist()
-            s2r = {s: r for r, s in enumerate(sort_ixs)}
-            recover_ixs = [s2r[s] for s in range(len(input_lengths_list))]
-
-            # move to long tensor
-            sort_ixs = input_labels.data.new(sort_ixs).long().cuda()
-            recover_ixs = input_labels.data.new(recover_ixs).long().cuda()
-
-            # sort input_labels by descending order
-            input_labels = input_labels[sort_ixs, 0:max_length].long().cuda()
-            assert max(input_lengths_list) == input_labels.size(1)
-
-        # embed
-        embedded = self.embedding(input_labels)
-        embedded = self.input_dropout(embedded)
-        if self.variable_lengths:
-            embedded = nn.utils.rnn.pack_padded_sequence(embedded, sorted_input_lengths_list, batch_first=True)
-
-        # forward rnn
-        output, hidden = self.rnn(embedded)
-
-        # recover
-        if self.variable_lengths:
-
-            # embedded (batch, seq_len, word_embedding_size)
-            embedded, _ = nn.utils.rnn.pad_packed_sequence(embedded, batch_first=True)
-            embedded = embedded[recover_ixs]
-
-            # recover rnn
-            output, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)  # (batch, max_len, hidden)
-            output = output[recover_ixs]
-
-            # recover hidden
-            if self.rnn_type == 'lstm':
-                hidden = hidden[0]
-            hidden = hidden[:, recover_ixs, :]
-            hidden = hidden.transpose(0, 1).contiguous()
-            hidden = hidden.view(hidden.size(0), -1)
-
-        return output, hidden, embedded, max_length
-
-# Develop from RNNEncoder
-class BERTEncoder(nn.Module):
-    def __init__(self, vocab_size, word_embedding_size=768, hidden_size=768, bidirectional=False,
-                 input_dropout_p=0, dropout_p=0, n_layers=1, rnn_type='lstm', variable_lengths=True, pretrain=False):
-        super(BERTEncoder, self).__init__()
-        self.variable_lengths = variable_lengths
-        # if pretrain is True:
-        #     embedding_mat = np.load('../data/word_embedding/embed_matrix.npy')
-        #     self.embedding = nn.Embedding.from_pretrained(to_torch(embedding_mat).cuda(), freeze=False)
-        # else:
-        #     self.embedding = nn.Embedding(vocab_size, word_embedding_size)
-        # self.input_dropout = nn.Dropout(input_dropout_p)
-        # self.rnn_type = rnn_type
-        # self.rnn = getattr(nn, rnn_type.upper())(word_embedding_size, hidden_size, n_layers,
-        #                                          batch_first=True,
-        #                                          bidirectional=bidirectional,
-        #                                          dropout=dropout_p)
-        # self.num_dirs = 2 if bidirectional else 1
-
-        self.embedding_path = '../../data/word_embedding/'
-        self.length_dict = pickle.load(open('../../data/word_embedding/sentence_id_to_sentence_dict.pkl'), 'rb')
-
-
-    def forward(self, input_labels, sentence_ids):
-        
-        assert type(sentence_ids)==list
-        # Originally input_label is of size num_sentences x 50
-        # I need a vector of size (bs, num_sentences) each ef the entry is an id of a sentence
-        bs_times_num_seq = input_labels.size(0)
-        assert len(sentence_ids) == bs_times_num_seq
-
-        max_length_chen = 50
-        embedded_BERT = torch.zeros((bs_times_num_seq, max_length_chen, 768))
-
-        for i, sentence_id in enumerate(sentence_ids):
-            _dir = self.embedding_path
-            _dir += (str(sentence_id // 10000 * 10000) + '-' + str(sentence_id//10000*10000 + 10000) + '/' + str(sentence_id) + '.tensor')
-
-            sentence_embeddings_BERT = torch.load(_dir)
-            sentence_length = self.length_dict[str(sentence_id)]
-            
-            embedded_BERT[i, 0:sentence_length, :] = sentence_embeddings_BERT[1:sentence_length+1, :]
-
-        
-
-        
-
-        
         if self.variable_lengths:
             input_lengths = (input_labels != 0).sum(1)
 

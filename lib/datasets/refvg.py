@@ -5,9 +5,6 @@ from opt import parse_opt
 import json
 import io
 
-import utils.timer as timer
-import time
-
 opt = parse_opt()
 opt = vars(opt)
 
@@ -18,35 +15,25 @@ class Refvg(object):
         self._dataset = 'refvg'
         self._imageset = 'vg'
         self._split = split
-        # load the *_expression.json
         self._ref_db = Refer(opt['data_root'], self._dataset, split)
-        # print("load expressions over time:", time.clock()-timer.get_value("clock"))
-        # load the *_sgs.json and *_sg_seqs.json
         if model_method == 'sgmn':
             self._ref_sg = self._load_sg()
             self._ref_sg_seq = self._load_sg_seq()
-            # print("load sg\sg_seq over time:", time.clock()-timer.get_value("clock"))
         else:
             self._ref_sg = None
             self._ref_sg_seq = None
-        # Get the ids of all the referent expressions
         self._sent_ids = self._ref_db.get_sentIds()
-        # Get all the expressions' corresponding img id
         self._image_ids = self._ref_db.get_imgIds(self._sent_ids)
-        # print("get img_id:", time.clock()-timer.get_value("clock"))
         roidb = Roidb(self._imageset, model_method)
-        # print("load roi over time:", time.clock()-timer.get_value("clock"))
-        # Get the corresponding image id and remove duplicate
-        # self.sent_ids = self.ref_db.remove_redundant_sent(self._sent_ids, roidb.image_ids)
         self._rois_db = {}
         self.max_num_box = 0
+        self.min_num_box = 9999
         for img_id in self._image_ids:
             assert roidb.roidb.has_key(img_id)
-            # roidb.roidb is the content of gt_objects_info.json
             self._rois_db[img_id] = roidb.roidb[img_id].copy()
-            # the largest number of objects in a image
             self.max_num_box = max(self.max_num_box, int(self._rois_db[img_id]['num_objs']))
-        self._h5_files = roidb.h5_files # the file descriptor of gt_object_%d.h5
+            self.min_num_box = min(self.min_num_box, int(self._rois_db[img_id]['num_objs']))
+        self._h5_files = roidb.h5_files
         self._h5_lrel_files = roidb.h5_lrel_files
 
     @property

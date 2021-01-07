@@ -7,13 +7,38 @@ import numpy as np
 from model_utils import NormalizeScale
 
 
+class SimplestAggregator(nn.Module):
+    # 一个简易版的aggregator
+    def __init__(self):
+        super(SimplestAggregator, self).__init__()
+        self.w1 = nn.Parameter(0.9*torch.ones(1))
+        self.w2 = nn.Parameter(0.1*torch.ones(1))
+
+    def forward(self, feature, cxt_feats, offset_idx, cxt_idx, cxt_idx_mask, bs, n, num_cxt):
+        mean_cxt_feats = cxt_feats.mean(dim=2)
+
+        # Normalize
+        all = self.w1.item() + self.w2.item()
+        self.w1.data /= all
+        self.w2.data /= all
+
+        # Weighted summation
+        # 把原feature矩阵和它5个neighbor的feature的加权求和
+        aggregated_feature = (feature * self.w1 + mean_cxt_feats * self.w2).float()
+
+        # Choose the neighbors' feature
+        cxt_feats = torch.index_select(aggregated_feature.view(bs*n, -1), 0, (offset_idx+cxt_idx).view(-1))
+        cxt_feats = cxt_feats.view(bs, n, num_cxt, -1) * cxt_idx_mask.unsqueeze(3).float()  #cxt_idx_mask是把那些不在这个image里的bounding box去掉。
+        
+        return cxt_feats, aggregated_feature
+
 class AttendRelationModule(nn.Module):
     def __init__(self, dim_vis_feat, visual_init_norm, jemb_dim, dim_lang_feat, jemb_dropout):
         super(AttendRelationModule, self).__init__()
-        self.vis_feat_normalizer = NormalizeScale(dim_vis_feat, visual_init_norm) # 初始化一个值全为visual_init_norm的1*dim_vis_feat的权重
-        self.lfeat_normalizer = NormalizeScale(5, visual_init_norm) # 初始化一个值全为visual_init_norm的1*5的权重
+        self.vis_feat_normalizer = NormalizeScale(dim_vis_feat, visual_init_norm)
+        self.lfeat_normalizer = NormalizeScale(5, visual_init_norm)
         self.fc = nn.Linear(dim_vis_feat + 5, jemb_dim)
-        self.matching = RelationMatching(jemb_dim, dim_lang_feat, jemb_dim, jemb_dropout, -1) # 把vis_input和lang_input经过两个一样的网络，通过mask给相应位置设置min value，返回余弦相似度
+        self.matching = RelationMatching(jemb_dim, dim_lang_feat, jemb_dim, jemb_dropout, -1)
 
     def forward(self, cxt_feats, cxt_lfeats, lang_feats):
         # cxt_feats: (bs, n, num_cxt, dim_vis_feat); cxt_lfeats: (bs, n, num_cxt, 5); lang_feats: (bs, num_seq, dim_lang)
@@ -30,7 +55,7 @@ class AttendRelationModule(nn.Module):
         rel_feats = self.fc(concat)
         rel_feats = rel_feats.view(batch, n, num_cxt, -1)  # bs, n, 10, jemb_dim
 
-        attn = self.matching(rel_feats, lang_feats, masks) # 把vis_input和lang_input经过两个一样的网络，通过mask给相应位置设置min value，返回余弦相似度
+        attn = self.matching(rel_feats, lang_feats, masks)
 
         return attn
 
@@ -53,8 +78,6 @@ class RelationMatching(nn.Module):
         self.min_value = min_value
 
     def forward(self, vis_input, lang_input, masks):
-        # 把vis_input和lang_input经过两个一样的网络，通过mask给相应位置设置min value，返回余弦相似度
-
         # vis_input: (bs, n, num_cxt, vim_dim); lang_input: (bs, num_seq, lang_dim);  mask(bs, n, num_cxt)
         bs, n, num_cxt = vis_input.size(0), vis_input.size(1), vis_input.size(2)
         num_seq = lang_input.size(1)
@@ -205,23 +228,20 @@ class TransferModule(nn.Module):
         obj_num_rel_expand = obj_num_rel.unsqueeze(1).expand(bs, n)
         obj_son_map[obj_num_rel_expand == 0] = 0
 
-        #total son, sum up the related object and subject attention map
+        #total son
         son_map = sub_son_map + obj_son_map
         num_rel_expand = sub_num_rel_expand + obj_num_rel_expand
         if self.need_norm:
             son_map, norm = self.norm_fun(son_map)
-        # sum up the relevant attention map and the unrelevant objects remain the same
         son_map = son_map * (num_rel_expand != 0).float() + attn_obj * (num_rel_expand == 0).float()
 
         offset_idx = torch.tensor(np.array(range(bs)) * n, requires_grad=False).cuda()
         offset_idx = offset_idx.unsqueeze(1).unsqueeze(2).expand(bs, n, num_cxt)
-        # why -1? the element should be index
         select_idx = (relation_ind != -1).long() * relation_ind + offset_idx
         select_attn = torch.index_select(son_map.view(bs * n, 1), 0, select_idx.view(-1))
         select_attn = select_attn.view(bs, n, num_cxt)
         select_attn = (relation_ind != -1).float() * select_attn
 
-        # choose the closest object
         attn_map_sum = torch.sum(attn_relation * select_attn, dim=2)
 
         if self.need_norm:
@@ -246,3 +266,19 @@ class NormAttnMap(nn.Module):
         attn = attn_map / norm
 
         return attn, norm
+
+class GateAttnMap(nn.Module):
+    def __init__(self, n):
+        super(GateAttnMap, self).__init__()
+        self.gate = nn.Sequential(nn.Linear(n, n),
+                                  nn.BatchNorm1d(n),
+                                  nn.ReLU(),
+                                  nn.Linear(n, 1),
+                                  nn.BatchNorm1d(1),
+                                  nn.Sigmoid())
+        self.top_n = n
+
+    def forward(self, attn_map):
+        sorted_attn_map, _ = attn_map.sort(dim=1, descending=True)
+        top_attn_map = sorted_attn_map[:, :self.top_n]
+        return self.gate(top_attn_map) * attn_map
