@@ -1,9 +1,11 @@
-# Graph-Structured Referring Expressions Reasoning in The Wild
+# Refined graph-structured attention for reasoning on referring expressiongrounding
 This repository contains the data and code for the following paper:
 
-* Yang, S., Li, G., & Yu, Y. *Graph-Structured Referring Expressions Reasoning in The Wild*. In CVPR 2020, Oral. ([PDF](https://drive.google.com/file/d/1yogm2d5l49clAN3Hf4yZ5LMvi25WON8h/view)) 
+* Yu Wu, Haoxin Liu, Zhuo Chen, Dehong Chen. *Refined graph-structured attention for reasoning on referring expressiongrounding*. In 2020Fall-CS280, Project Report. ([PDF](https://drive.google.com/file/d/1ALYHGtR2HFKlD0FE9SjtBMRGZqyjqwps/view?usp=sharing)) 
 
-![](./fig/sgmn.png)
+Github link: https://github.com/Chord-Chen-30/sgmn
+
+![](./fig/all.png)
 
 
 ## Other Baselines
@@ -19,7 +21,7 @@ This repository contains the data and code for the following paper:
 4. Install other dependency packages.
 3. Clone this repository and enter the root directory of it.
    ```
-   git clone https://github.com/sibeiyang/sgmn.git && cd sgmn
+   git clone https://github.com/Chord-Chen-30/sgmn.git && cd sgmn
    ```
 
 ## [Ref-Reasoning Dataset](https://sibeiyang.github.io/dataset/ref-reasoning)
@@ -79,20 +81,8 @@ In [Ref-Reasoning](https://drive.google.com/drive/folders/1w4qhQgrgUeGOr_wG5KP0y
    bash experiments/script/evaluate.sh $GPUs $Checkpoint
    ```
 
-## Citation
-If you find the work useful in your research, please consider citing:
-
-```
-@inproceedings{yang2020graph-structured,
-  title={Graph-Structured Referring Expressions Reasoning in The Wild},
-  author={Yang, Sibei and Li, Guanbin and Yu, Yizhou},
-  journal={Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition},
-  year={2020}
-}
-```
-
 ## Acknowlegement
-Part of code obtained from [MattNet](https://github.com/lichengunc/MAttNet) codebase.
+Part of code obtained from [SGMN](https://github.com/Chord-Chen-30/sgmn.git) codebase.
 
 ## Contact
-sbyang [at] cs.hku.hk
+wuyu1 [at] shanghaitech.edu.cn
